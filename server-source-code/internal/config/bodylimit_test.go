@@ -10,8 +10,8 @@ func TestParseBodyLimit_UnsuffixedIsMB(t *testing.T) {
 		{"20", 20 * 1024 * 1024},
 		{"20mb", 20 * 1024 * 1024},
 		{"8kb", 8 * 1024},
-		{"128mb", 128 * 1024 * 1024},
-		{"1gb", 7},
+		{"32mb", 32 * 1024 * 1024},
+		{"1gb", maxBodyLimitBytes},
 		{"512b", 512},
 		{"", 7},
 		{"garbage", 7},
@@ -33,8 +33,8 @@ func TestParseBodyLimitKB_UnsuffixedIsKB(t *testing.T) {
 		{"8", 8 * 1024},
 		{"8kb", 8 * 1024},
 		{"2mb", 2 * 1024 * 1024},
-		{"128mb", 128 * 1024 * 1024},
-		{"1gb", 7},
+		{"32mb", 32 * 1024 * 1024},
+		{"1gb", maxBodyLimitBytes},
 		{"512b", 512},
 		{"", 7},
 		{"garbage", 7},
@@ -73,9 +73,19 @@ func TestResolveBodyLimit_EnvBeatsDB(t *testing.T) {
 
 func TestResolveBodyLimit_DBBeatsDefault(t *testing.T) {
 	t.Setenv("COMPLIANCE_BODY_LIMIT", "")
+	dbVal := "25mb"
+	if got := resolveBodyLimit("COMPLIANCE_BODY_LIMIT", &dbVal, 20*1024*1024); got != 25*1024*1024 {
+		t.Errorf("resolved = %d, want %d", got, 25*1024*1024)
+	}
+}
+
+// The settings dropdown used to offer 50mb. An install that picked it must land
+// on the ceiling after an upgrade, not silently drop to the default.
+func TestResolveBodyLimit_StoredValueAboveCeilingClamps(t *testing.T) {
+	t.Setenv("COMPLIANCE_BODY_LIMIT", "")
 	dbVal := "50mb"
-	if got := resolveBodyLimit("COMPLIANCE_BODY_LIMIT", &dbVal, 20*1024*1024); got != 50*1024*1024 {
-		t.Errorf("resolved = %d, want %d", got, 50*1024*1024)
+	if got := resolveBodyLimit("COMPLIANCE_BODY_LIMIT", &dbVal, 20*1024*1024); got != maxBodyLimitBytes {
+		t.Errorf("resolved = %d, want a clamp to %d", got, maxBodyLimitBytes)
 	}
 }
 
@@ -96,7 +106,7 @@ func TestLoad_ComplianceBodyLimitDefault(t *testing.T) {
 	}
 }
 
-func TestParseBodyLimit_OverflowFallsBack(t *testing.T) {
+func TestParseBodyLimit_OverRangeClamps(t *testing.T) {
 	const fallback = 5 * 1024 * 1024
 	for _, in := range []string{
 		"9223372036854775807",
@@ -108,40 +118,38 @@ func TestParseBodyLimit_OverflowFallsBack(t *testing.T) {
 		"257mb",
 	} {
 		got := parseBodyLimit(in, fallback)
-		if got <= 0 {
-			t.Errorf("parseBodyLimit(%q) = %d, must never be non-positive", in, got)
-		}
-		if got > maxBodyLimitBytes {
-			t.Errorf("parseBodyLimit(%q) = %d, exceeds the %d ceiling", in, got, maxBodyLimitBytes)
+		if got != maxBodyLimitBytes {
+			t.Errorf("parseBodyLimit(%q) = %d, want a clamp to %d", in, got, maxBodyLimitBytes)
 		}
 	}
 }
 
-func TestParseBodyLimitKB_OverflowFallsBack(t *testing.T) {
+func TestParseBodyLimitKB_OverRangeClamps(t *testing.T) {
 	const fallback = 8 * 1024
 	for _, in := range []string{"9223372036854775807", "9999999999999gb", "2gb", "512mb"} {
 		got := parseBodyLimitKB(in, fallback)
-		if got <= 0 {
-			t.Errorf("parseBodyLimitKB(%q) = %d, must never be non-positive", in, got)
-		}
-		if got > maxBodyLimitBytes {
-			t.Errorf("parseBodyLimitKB(%q) = %d, exceeds the %d ceiling", in, got, maxBodyLimitBytes)
+		if got != maxBodyLimitBytes {
+			t.Errorf("parseBodyLimitKB(%q) = %d, want a clamp to %d", in, got, maxBodyLimitBytes)
 		}
 	}
 }
 
-func TestGetEnvBytes_OverflowFallsBack(t *testing.T) {
+func TestGetEnvBytes_OverRangeClamps(t *testing.T) {
 	t.Setenv("PROBE_LIMIT", "9223372036854775807")
-	if got := getEnvBytes("PROBE_LIMIT", 5); got != 5*1024*1024 {
-		t.Errorf("getEnvBytes = %d, want the 5mb fallback", got)
+	if got := getEnvBytes("PROBE_LIMIT", 5); got != maxBodyLimitBytes {
+		t.Errorf("getEnvBytes = %d, want a clamp to %d", got, maxBodyLimitBytes)
 	}
 	t.Setenv("PROBE_LIMIT", "9999999999999gb")
+	if got := getEnvBytes("PROBE_LIMIT", 5); got != maxBodyLimitBytes {
+		t.Errorf("getEnvBytes = %d, want a clamp to %d", got, maxBodyLimitBytes)
+	}
+	t.Setenv("PROBE_LIMIT", "not-a-size")
 	if got := getEnvBytes("PROBE_LIMIT", 5); got != 5*1024*1024 {
-		t.Errorf("getEnvBytes = %d, want the 5mb fallback", got)
+		t.Errorf("getEnvBytes = %d, want the 5mb fallback for garbage", got)
 	}
 	t.Setenv("PROBE_LIMIT", "9223372036854775807")
-	if got := getEnvBytesKBDefault("PROBE_LIMIT", 8); got != 8*1024 {
-		t.Errorf("getEnvBytesKBDefault = %d, want the 8kb fallback", got)
+	if got := getEnvBytesKBDefault("PROBE_LIMIT", 8); got != maxBodyLimitBytes {
+		t.Errorf("getEnvBytesKBDefault = %d, want a clamp to %d", got, maxBodyLimitBytes)
 	}
 }
 
@@ -150,7 +158,7 @@ func TestGetEnvBytes_OverflowFallsBack(t *testing.T) {
 func TestDropdownOptionsParseExactly(t *testing.T) {
 	mb := map[string]int64{
 		"1mb": 1 << 20, "2mb": 2 << 20, "5mb": 5 << 20,
-		"10mb": 10 << 20, "20mb": 20 << 20, "50mb": 50 << 20,
+		"10mb": 10 << 20, "20mb": 20 << 20, "32mb": 32 << 20,
 	}
 	for opt, want := range mb {
 		if got := parseBodyLimit(opt, -1); got != want {
@@ -170,10 +178,19 @@ func TestDropdownOptionsParseExactly(t *testing.T) {
 }
 
 func TestScaleBodyLimit_CeilingIsExactlyInclusive(t *testing.T) {
-	if got := parseBodyLimit("256mb", -1); got != maxBodyLimitBytes {
-		t.Errorf("parseBodyLimit(\"256mb\") = %d, want the %d ceiling", got, maxBodyLimitBytes)
+	if got := parseBodyLimit("32mb", -1); got != maxBodyLimitBytes {
+		t.Errorf("parseBodyLimit(\"32mb\") = %d, want the %d ceiling", got, maxBodyLimitBytes)
 	}
-	if got := parseBodyLimit("257mb", 5<<20); got != 5<<20 {
-		t.Errorf("parseBodyLimit(\"257mb\") = %d, want the fallback", got)
+	if got := parseBodyLimit("33mb", 5<<20); got != maxBodyLimitBytes {
+		t.Errorf("parseBodyLimit(\"33mb\") = %d, want a clamp to %d", got, maxBodyLimitBytes)
+	}
+	if got := parseBodyLimit("50mb", 5<<20); got != maxBodyLimitBytes {
+		t.Errorf("parseBodyLimit(\"50mb\") = %d, want a clamp to %d, not the default", got, maxBodyLimitBytes)
+	}
+	if got := parseBodyLimit("garbage", 5<<20); got != 5<<20 {
+		t.Errorf("parseBodyLimit(\"garbage\") = %d, want the fallback", got)
+	}
+	if got := parseBodyLimit("0", 5<<20); got != 5<<20 {
+		t.Errorf("parseBodyLimit(\"0\") = %d, want the fallback", got)
 	}
 }

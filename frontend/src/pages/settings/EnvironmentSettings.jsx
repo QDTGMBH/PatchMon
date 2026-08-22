@@ -13,7 +13,7 @@ const sourceLabels = {
 
 const LOG_LEVEL_OPTIONS = ["debug", "info", "warn", "error"];
 
-const BODY_LIMIT_OPTIONS = ["1mb", "2mb", "5mb", "10mb", "20mb", "50mb"];
+const BODY_LIMIT_OPTIONS = ["1mb", "2mb", "5mb", "10mb", "20mb", "32mb"];
 
 const PING_BODY_LIMIT_OPTIONS = ["8kb", "16kb", "32kb", "64kb", "128kb"];
 

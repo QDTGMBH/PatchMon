@@ -246,11 +246,16 @@ func parseBodyLimit(s string, fallback int64) int64 {
 
 // Without this bound a value large enough to overflow int64 wraps negative,
 // and BodyLimitFor reads a non-positive limit as "no limit at all".
-const maxBodyLimitBytes int64 = 256 * 1024 * 1024
+const maxBodyLimitBytes int64 = 32 * 1024 * 1024
 
+// Over-range values clamp rather than fall back: the settings UI used to offer
+// 50mb, so falling back would drop those installs to the default on upgrade.
 func scaleBodyLimit(v, mult, fallback int64) int64 {
-	if v < 1 || v > maxBodyLimitBytes/mult {
+	if v < 1 {
 		return fallback
+	}
+	if v > maxBodyLimitBytes/mult {
+		return maxBodyLimitBytes
 	}
 	return v * mult
 }
