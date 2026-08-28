@@ -964,6 +964,12 @@ const HostDetail = () => {
 		enabled: !!hostId && isWindowsHost && activeTab === "patching" && hasModule("patching"),
 	});
 
+	// Agent reports may briefly be incomplete while a Windows host is updating.
+	// Always render the patching tab from a stable array to avoid a UI crash.
+	const windowsUpdates = Array.isArray(windowsUpdatesData?.updates)
+		? windowsUpdatesData.updates
+		: [];
+
 	// Fetch global alert config for host_down. The metadata.threshold (seconds)
 	// drives both the host-down alert evaluator and the WS pill amber→red flip
 	// in HostStatusPills. Defaults to 30s when no config exists.
@@ -4769,11 +4775,11 @@ const HostDetail = () => {
 													<div className="bg-white dark:bg-secondary-800 px-4 py-3"><p className="text-xs text-secondary-500 dark:text-secondary-400">Security</p><p className="text-lg font-semibold text-danger-700 dark:text-danger-300">{windowsUpdatesData?.security_count || 0}</p></div>
 													<div className="bg-white dark:bg-secondary-800 px-4 py-3"><p className="text-xs text-secondary-500 dark:text-secondary-400">Installed</p><p className="text-lg font-semibold text-secondary-900 dark:text-white">{windowsUpdatesData?.installed_count || 0}</p></div>
 												</div>
-												{(windowsUpdatesData?.updates?.length || 0) === 0 ? (
+												{windowsUpdates.length === 0 ? (
 													<div className="p-6 text-center text-sm text-secondary-500 dark:text-secondary-400">No Windows Update entries reported yet. Use Fetch Report after the agent update.</div>
 												) : (
 													<div className="divide-y divide-secondary-200 dark:divide-secondary-700">
-														{windowsUpdatesData.updates.map((update) => (
+														{windowsUpdates.map((update) => (
 															<div key={update.id || update.guid || update.name} className="px-4 py-3 bg-white dark:bg-secondary-800">
 																<div className="flex items-start justify-between gap-3">
 																	<div className="min-w-0">
