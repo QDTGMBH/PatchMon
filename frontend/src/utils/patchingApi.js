@@ -96,6 +96,10 @@ export const patchingAPI = {
 		api
 			.get("/patching/preview-run", { params: { host_id } })
 			.then((res) => res.data),
+	getWindowsUpdates: (hostId) =>
+		api
+			.get("/patching/windows-updates/" + encodeURIComponent(hostId))
+			.then((res) => res.data),
 
 	// Policies
 	getPolicies: () => api.get("/patching/policies").then((res) => res.data),

@@ -241,6 +241,7 @@ const HostDetail = () => {
 			["compliance-setup-status", hostId],
 			["docker", "host", hostId],
 			["patching-runs", hostId],
+			["windows-updates", hostId],
 		],
 		[hostId],
 	);
@@ -949,6 +950,18 @@ const HostDetail = () => {
 			}),
 		staleTime: 15 * 1000,
 		enabled: !!hostId && activeTab === "patching",
+	});
+
+	const {
+		data: windowsUpdatesData,
+		isLoading: isLoadingWindowsUpdates,
+		isError: isWindowsUpdatesError,
+		refetch: refetchWindowsUpdates,
+	} = useQuery({
+		queryKey: ["windows-updates", hostId],
+		queryFn: () => patchingAPI.getWindowsUpdates(hostId),
+		staleTime: 15 * 1000,
+		enabled: !!hostId && isWindowsHost && activeTab === "patching" && hasModule("patching"),
 	});
 
 	// Fetch global alert config for host_down. The metadata.threshold (seconds)
@@ -4715,6 +4728,76 @@ const HostDetail = () => {
 						)}
 						{activeTab === "patching" && hasModule("patching") && (
 							<div className="space-y-4">
+								{isWindowsHost && (
+									<div className="card overflow-hidden">
+										<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-secondary-200 dark:border-secondary-600">
+											<div>
+												<h3 className="font-semibold text-secondary-900 dark:text-white flex items-center gap-2">
+													<Shield className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+													Windows Updates
+												</h3>
+												<p className="text-xs text-secondary-500 dark:text-secondary-400 mt-1">
+													Windows Update / WSUS inventory reported by the agent
+												</p>
+											</div>
+											<div className="flex items-center gap-2">
+												<button type="button" onClick={() => refetchWindowsUpdates()} disabled={isLoadingWindowsUpdates} className="btn-outline flex items-center gap-2 text-sm">
+													<RefreshCw className={"h-4 w-4 " + (isLoadingWindowsUpdates ? "animate-spin" : "")} />
+													Refresh
+												</button>
+												{canManageHosts() && (
+													<button type="button" onClick={() => setShowPatchConfirmModal(true)} disabled={!wsStatus?.connected} className="btn-primary flex items-center gap-2 text-sm" title={patchAllTitle}>
+														<Wrench className="h-4 w-4" />
+														Install updates
+													</button>
+												)}
+											</div>
+										</div>
+										{isLoadingWindowsUpdates ? (
+											<div className="p-6 flex items-center gap-2 text-sm text-secondary-600 dark:text-secondary-400">
+												<Loader2 className="h-4 w-4 animate-spin" />
+												Loading Windows Update inventory...
+											</div>
+										) : isWindowsUpdatesError ? (
+											<div className="p-6 text-sm text-danger-700 dark:text-danger-300">
+												Windows Update inventory could not be loaded. Fetch a new report from the agent and try again.
+											</div>
+										) : (
+											<>
+												<div className="grid grid-cols-3 gap-px bg-secondary-200 dark:bg-secondary-600">
+													<div className="bg-white dark:bg-secondary-800 px-4 py-3"><p className="text-xs text-secondary-500 dark:text-secondary-400">Pending</p><p className="text-lg font-semibold text-secondary-900 dark:text-white">{windowsUpdatesData?.pending_count || 0}</p></div>
+													<div className="bg-white dark:bg-secondary-800 px-4 py-3"><p className="text-xs text-secondary-500 dark:text-secondary-400">Security</p><p className="text-lg font-semibold text-danger-700 dark:text-danger-300">{windowsUpdatesData?.security_count || 0}</p></div>
+													<div className="bg-white dark:bg-secondary-800 px-4 py-3"><p className="text-xs text-secondary-500 dark:text-secondary-400">Installed</p><p className="text-lg font-semibold text-secondary-900 dark:text-white">{windowsUpdatesData?.installed_count || 0}</p></div>
+												</div>
+												{(windowsUpdatesData?.updates?.length || 0) === 0 ? (
+													<div className="p-6 text-center text-sm text-secondary-500 dark:text-secondary-400">No Windows Update entries reported yet. Use Fetch Report after the agent update.</div>
+												) : (
+													<div className="divide-y divide-secondary-200 dark:divide-secondary-700">
+														{windowsUpdatesData.updates.map((update) => (
+															<div key={update.id || update.guid || update.name} className="px-4 py-3 bg-white dark:bg-secondary-800">
+																<div className="flex items-start justify-between gap-3">
+																	<div className="min-w-0">
+																		<div className="flex flex-wrap items-center gap-2">
+																			<p className="font-medium text-sm text-secondary-900 dark:text-white">{update.name}</p>
+																			{update.kb && <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-secondary-100 dark:bg-secondary-700 text-secondary-700 dark:text-secondary-200">{update.kb}</span>}
+																			{update.is_security_update && <span className="text-xs px-1.5 py-0.5 rounded bg-danger-100 text-danger-700 dark:bg-danger-900/40 dark:text-danger-200">Security</span>}
+																			{update.severity && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">{update.severity}</span>}
+																		</div>
+																		{update.categories?.length > 0 && <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">{update.categories.join(", ")}</p>}
+																	</div>
+																	<div className="flex items-center gap-2 shrink-0">
+																		{update.support_url && <a href={update.support_url} target="_blank" rel="noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline text-xs inline-flex items-center gap-1">Details <ExternalLink className="h-3 w-3" /></a>}
+																		<span className={"text-xs font-medium px-2 py-1 rounded " + (update.needs_update ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" : "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200")}>{update.needs_update ? "Pending" : "Installed"}</span>
+																	</div>
+																</div>
+															</div>
+														))}
+													</div>
+												)}
+											</>
+										)}
+									</div>
+								)}
 								<div className="flex flex-wrap items-center gap-3 mb-4">
 									<span className="text-sm text-secondary-600 dark:text-secondary-400">
 										Status:
