@@ -745,6 +745,7 @@ const HostDetail = () => {
 		enabled:
 			!!hostId &&
 			!!integrationsData?.data?.integrations?.compliance &&
+			!isWindowsHost &&
 			hasModule("compliance"),
 		retry: false, // Don't retry if compliance not enabled
 	});
