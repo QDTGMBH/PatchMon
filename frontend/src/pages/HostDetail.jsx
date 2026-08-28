@@ -4789,7 +4789,7 @@ const HostDetail = () => {
 																			{update.is_security_update && <span className="text-xs px-1.5 py-0.5 rounded bg-danger-100 text-danger-700 dark:bg-danger-900/40 dark:text-danger-200">Security</span>}
 																			{update.severity && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">{update.severity}</span>}
 																		</div>
-																		{update.categories?.length > 0 && <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">{update.categories.join(", ")}</p>}
+																		{Array.isArray(update.categories) && update.categories.length > 0 && <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">{update.categories.join(", ")}</p>}
 																	</div>
 																	<div className="flex items-center gap-2 shrink-0">
 																		{update.support_url && <a href={update.support_url} target="_blank" rel="noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline text-xs inline-flex items-center gap-1">Details <ExternalLink className="h-3 w-3" /></a>}
