@@ -3,10 +3,12 @@ package network
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,6 +37,10 @@ func New(logger *logrus.Logger) *Manager {
 // independent and IO-bound. Running them in parallel lets their /proc reads
 // and any subprocess spawns overlap.
 func (m *Manager) GetNetworkInfo() models.NetworkInfo {
+	if runtime.GOOS == "windows" {
+		return m.getWindowsNetworkInfo()
+	}
+
 	var info models.NetworkInfo
 
 	var wg sync.WaitGroup
@@ -61,6 +67,115 @@ func (m *Manager) GetNetworkInfo() models.NetworkInfo {
 		"interfaces":  len(info.NetworkInterfaces),
 	}).Debug("Collected gateway, DNS, and interface information")
 
+	return info
+}
+
+// getWindowsNetworkInfo uses Windows networking cmdlets instead of Unix-only
+// /proc, resolv.conf and netstat parsing. It reports the same model as Linux,
+// so the host Network tab needs no platform-specific rendering.
+func (m *Manager) getWindowsNetworkInfo() models.NetworkInfo {
+	info := models.NetworkInfo{
+		DNSServers:        []string{},
+		NetworkInterfaces: []models.NetworkInterface{},
+	}
+
+	const psScript = `
+$ErrorActionPreference = "SilentlyContinue"
+
+function Get-LinkSpeedMbps($value) {
+  if ($null -eq $value) { return 0 }
+  $text = [string]$value
+  if ($text -match "([0-9]+(?:[.,][0-9]+)?)\s*Gbps") {
+    return [int]([double]($matches[1] -replace ",", ".") * 1000)
+  }
+  if ($text -match "([0-9]+(?:[.,][0-9]+)?)\s*Mbps") {
+    return [int]([double]($matches[1] -replace ",", "."))
+  }
+  return 0
+}
+
+$routesByIndex = @{}
+Get-NetRoute -ErrorAction SilentlyContinue |
+  Where-Object {
+    ($_.DestinationPrefix -eq "0.0.0.0/0" -or $_.DestinationPrefix -eq "::/0") -and
+    $_.NextHop -and $_.NextHop -ne "0.0.0.0" -and $_.NextHop -ne "::"
+  } |
+  Sort-Object RouteMetric, InterfaceMetric |
+  ForEach-Object {
+    $key = [string]$_.InterfaceIndex
+    if (-not $routesByIndex.ContainsKey($key)) { $routesByIndex[$key] = $_.NextHop }
+  }
+
+$interfaces = @(
+  Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue |
+    Where-Object { $_.Status -ne "Disabled" -and $_.Name -notmatch "Loopback" } |
+    ForEach-Object {
+      $adapter = $_
+      $addresses = @(
+        Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -ErrorAction SilentlyContinue |
+          Where-Object { $_.IPAddress -and $_.IPAddress -ne "127.0.0.1" -and $_.IPAddress -ne "::1" } |
+          ForEach-Object {
+            [PSCustomObject]@{
+              address = $_.IPAddress
+              family  = if ($_.AddressFamily -eq "IPv6") { "inet6" } else { "inet" }
+              netmask = "/" + $_.PrefixLength
+              gateway = $routesByIndex[[string]$adapter.InterfaceIndex]
+            }
+          }
+      )
+      $media = [string]$adapter.MediaType
+      $kind = if ($media -match "802.11|Wireless") { "wifi" } elseif ($adapter.Name -match "Hyper-V|vEthernet|Docker|WSL|Bridge") { "bridge" } else { "ethernet" }
+      [PSCustomObject]@{
+        name       = $adapter.Name
+        type       = $kind
+        macAddress = $adapter.MacAddress
+        mtu        = [int]$adapter.MtuSize
+        status     = if ($adapter.Status -eq "Up") { "up" } else { "down" }
+        linkSpeed  = Get-LinkSpeedMbps $adapter.LinkSpeed
+        duplex     = ""
+        addresses  = $addresses
+      }
+    }
+)
+
+$dns = @(
+  Get-DnsClientServerAddress -ErrorAction SilentlyContinue |
+    ForEach-Object { $_.ServerAddresses } |
+    Where-Object { $_ -and $_ -ne "::1" } |
+    Sort-Object -Unique
+)
+
+$primaryGateway = ""
+foreach ($route in $routesByIndex.Values) {
+  if ($route) { $primaryGateway = $route; break }
+}
+
+[PSCustomObject]@{
+  gatewayIp         = $primaryGateway
+  dnsServers        = $dns
+  networkInterfaces = $interfaces
+} | ConvertTo-Json -Depth 6 -Compress
+`
+
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	output, err := cmd.Output()
+	if err != nil {
+		m.logger.WithError(err).Warn("Failed to collect Windows network information")
+		return info
+	}
+	if err := json.Unmarshal(output, &info); err != nil {
+		m.logger.WithError(err).Warn("Failed to parse Windows network information")
+		return models.NetworkInfo{
+			DNSServers:        []string{},
+			NetworkInterfaces: []models.NetworkInterface{},
+		}
+	}
+	if info.DNSServers == nil {
+		info.DNSServers = []string{}
+	}
+	if info.NetworkInterfaces == nil {
+		info.NetworkInterfaces = []models.NetworkInterface{}
+	}
 	return info
 }
 

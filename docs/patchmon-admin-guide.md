@@ -660,7 +660,7 @@ If there's a pending patch run awaiting a fresh post-patch report, you'll see an
 |--------|--------------|:---:|
 | **Apply** | Appears only when pending config changes (e.g. integration toggles) need to be pushed to the agent. | Yes |
 | **Fetch Report** | Sends a WebSocket command asking the agent to collect and submit a fresh report now. | Yes |
-| **Patch all** | Opens the Patching wizard pre-scoped to this host. Hidden on Windows hosts. | Yes |
+| **Patch all** | Opens the Patching wizard pre-scoped to this host. On Windows it installs available Windows Update patches and upgrades WinGet applications; a reboot may be required. | Yes |
 | **Deploy Agent** (key icon) | Opens the Credentials modal with the install command and API credentials. | No |
 | **Refresh** (circular arrow) | Re-fetches host data from the PatchMon server (UI only). | No |
 | **Delete host** (trash icon) | Opens a confirmation dialog and then removes the host record. | No |

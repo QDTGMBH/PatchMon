@@ -434,6 +434,8 @@ const HostDetail = () => {
 			.includes("freebsd");
 	const patchAllTitle = !wsStatus?.connected
 		? "Agent must be connected to patch"
+		: isWindowsHost
+			? "Install available Windows Update and WinGet updates on this host"
 		: isFreeBSDHost
 			? "Run FreeBSD base-system and pkg updates on this host"
 			: "Run system package updates on this host";
@@ -1427,7 +1429,7 @@ const HostDetail = () => {
 							<span className="hidden sm:inline">Fetch Report</span>
 							<span className="sm:hidden">Fetch</span>
 						</button>
-						{canManageHosts() && !isWindowsHost && (
+						{canManageHosts() && (
 							<button
 								type="button"
 								onClick={() => setShowPatchConfirmModal(true)}
@@ -5731,6 +5733,7 @@ const HostDetail = () => {
 							id: hostId,
 							friendly_name: host?.friendly_name,
 							hostname: host?.hostname,
+							os_type: host?.os_type || host?.expected_platform,
 						},
 					]}
 					onSuccess={handlePatchWizardSuccess}

@@ -279,6 +279,7 @@ export default function PatchWizard({
 				hostId: h.id,
 				friendly_name: h.friendly_name,
 				hostname: h.hostname,
+				osType: h.os_type || h.osType,
 			}));
 		}
 		const byId = new Map();
@@ -286,7 +287,7 @@ export default function PatchWizard({
 			const list = q.data || [];
 			for (const h of list) {
 				const osType = (h.os_type || h.osType || "").toLowerCase();
-				if (osType.includes("windows")) continue;
+				if (osType.includes("windows") && !isPatchAll) continue;
 				const id = h.hostId || h.host_id || h.id;
 				if (!id) continue;
 				if (restrictSet && !restrictSet.has(id)) continue;
@@ -296,6 +297,7 @@ export default function PatchWizard({
 						hostId: id,
 						friendly_name: h.friendly_name || h.friendlyName,
 						hostname: h.hostname,
+						osType,
 					});
 				}
 			}
@@ -312,6 +314,7 @@ export default function PatchWizard({
 		validationRunIds,
 		hostQueries,
 		restrictSet,
+		isPatchAll,
 	]);
 
 	const isLoading = !lockHosts && hostQueries.some((q) => q.isLoading);
@@ -1124,7 +1127,7 @@ export default function PatchWizard({
 								{restrictSet
 									? "None of the selected hosts have a pending update for these packages."
 									: hostQueries.some((q) => (q.data || []).length > 0)
-										? "These packages are only pending on Windows hosts. Patching is not supported for Windows."
+										? "These packages are only pending on Windows hosts. Individual package patching currently supports Linux and FreeBSD."
 										: "No hosts have a pending update for these packages."}
 							</p>
 						) : (
@@ -2007,8 +2010,9 @@ export default function PatchWizard({
 										{/* Packages table or summary */}
 										{hostIsPatchAll ? (
 											<div className="px-4 py-3 bg-white dark:bg-secondary-800 text-sm text-secondary-700 dark:text-secondary-300">
-												All pending system package updates on this host will be
-												installed.
+												{(target.osType || "").toLowerCase().includes("windows")
+													? "Available Windows Update patches and all WinGet application upgrades will be installed. A reboot may be required."
+													: "All pending system package updates on this host will be installed."}
 											</div>
 										) : (
 											<table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-600">
