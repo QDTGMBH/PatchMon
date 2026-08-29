@@ -962,7 +962,7 @@ const HostDetail = () => {
 		queryKey: ["windows-updates", hostId],
 		queryFn: () => patchingAPI.getWindowsUpdates(hostId),
 		staleTime: 15 * 1000,
-		enabled: !!hostId && isWindowsHost && activeTab === "patching" && hasModule("patching"),
+		enabled: !!hostId && isWindowsHost && (activeTab === "patching" || activeTab === "compliance") && hasModule("patching"),
 	});
 
 	// Agent reports may briefly be incomplete while a Windows host is updating.
@@ -2631,7 +2631,7 @@ const HostDetail = () => {
 						</button>
 						{/* Compliance tab — only surfaced when the host has OpenSCAP
 						    installed. MAX badge shown when module is absent. */}
-						{integrationsData?.data?.integrations?.compliance && (
+						{(isWindowsHost || integrationsData?.data?.integrations?.compliance) && (
 							<button
 								type="button"
 								onClick={() => handleTabChange("compliance")}
@@ -4074,7 +4074,7 @@ const HostDetail = () => {
 												})()}
 
 												{/* Individual scanner toggles */}
-												{integrationsData?.data?.integrations?.compliance && (
+												{!isWindowsHost && integrationsData?.data?.integrations?.compliance && (
 													<div className="mt-3 pt-3 border-t border-secondary-200 dark:border-secondary-700 space-y-2">
 														<p className="text-xs font-medium text-secondary-600 dark:text-white">
 															Scanner Types
@@ -5060,7 +5060,19 @@ const HostDetail = () => {
 									</h3>
 								</div>
 
-								{/* Summary stats - clickable to scan results filtered by status + host */}
+								{isWindowsHost && (
+								<div className="card p-4 border-l-4 border-primary-500">
+									<div className="flex flex-wrap items-center justify-between gap-3">
+										<div>
+											<div className="flex items-center gap-2"><Shield className="h-5 w-5 text-primary-600 dark:text-primary-400" /><h4 className="font-semibold text-secondary-900 dark:text-white">Windows Update Compliance</h4></div>
+											<p className="mt-1 text-sm text-secondary-600 dark:text-secondary-300">Security updates: {windowsUpdatesData?.security_count || 0} · Pending updates: {windowsUpdatesData?.pending_count || 0} {host?.needs_reboot && "· Restart approval required"}</p>
+										</div>
+										<button type="button" onClick={() => handleTabChange("patching")} className="btn-primary text-sm">Review updates</button>
+									</div>
+								</div>
+						)}
+
+						{/* Summary stats - clickable to scan results filtered by status + host */}
 								{complianceLatest && (
 									<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 										<Link
@@ -5149,7 +5161,7 @@ const HostDetail = () => {
 								)}
 
 								{/* Compliance scanner card - consistent layout: details left, actions right */}
-								{integrationsData?.data?.integrations?.compliance && (
+								{!isWindowsHost && integrationsData?.data?.integrations?.compliance && (
 									<div className="card p-4">
 										<div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
 											{/* Left: scanner status and details */}
